@@ -67,7 +67,7 @@
     }
     showView('main');
 
-    // Render principal v5
+    // Render principal con creación y %, v4+v5
     function renderMain() {
       onSnapshot(cajasCol, snapshot => {
         cajas = snapshot.docs.map(d=>({id:d.id,...d.data()}));
@@ -75,7 +75,7 @@
         pctInputs.innerHTML = '';
         snapshot.docs.forEach(docSnap => {
           const data = docSnap.data();
-          // Lista
+          // Lista de cajas con click detail
           const li = document.createElement('li');
           const meta = data.budget?` (Meta: $${data.budget})`:'';
           li.textContent = `${data.nombre}: $${data.saldo.toFixed(2)}${meta}`;
@@ -89,6 +89,12 @@
         });
       });
     }
+
+    // Crear nueva caja
+    document.getElementById('create-box-btn').onclick = async () => {
+      const nombre = prompt('Nombre de la nueva caja:');
+      if (nombre) await addDoc(cajasCol, { nombre: nombre.trim(), saldo: 0, budget: 0, fechaCreacion: serverTimestamp() });
+    };
 
     // Calcular reparto
     function calculate(){
@@ -107,7 +113,7 @@
       calcResults.appendChild(acc);
     }
 
-    // Distribuir v5
+    // Distribuir y registrar en transacciones
     document.getElementById('distribute-btn').onclick=async()=>{
       const total=parseFloat(amtInput.value);
       if(isNaN(total))return alert('Monto inválido');
@@ -116,61 +122,52 @@
         const inp=pctInputs.querySelector(`input[data-id="${b.id}"]`);
         const pct=parseFloat(inp.value)||0; const m=total*pct/100;
         await updateDoc(doc(db,'cajas',b.id),{saldo:b.saldo+m});
+        // registrar transacción de distribución
+        await addDoc(collection(db,`cajas/${b.id}/transacciones`),{tipo:'distribución',monto:m,descripcion:'Distribución global',fecha:serverTimestamp()});
         detalle.push({cajaId:b.id,porcentaje:pct,montoAsignado:m});
       }
       await addDoc(distribCol,{fecha:serverTimestamp(),montoTotal:total,detalle});
       amtInput.value='';pctInputs.querySelectorAll('input').forEach(i=>i.value='');calcResults.innerHTML='Distribuido';
     };
 
-    // Abrir detalle v4
+    // Abrir detalle de caja
     function openDetail(id,data){
       currentBoxId=id; showView('detail');
-      // Actions
+      // Acciones editar/eliminar caja
       boxTitle.textContent=data.nombre;
       boxActions.innerHTML='';
-      ['Editar Caja','Eliminar Caja'].forEach((txt,i)=>{
-        const btn=document.createElement('button');btn.textContent=txt;
-        btn.onclick=async()=>{
-          if(i===0){const n=prompt('Nuevo nombre',data.nombre);if(n)await updateDoc(doc(db,'cajas',id),{nombre:n.trim()});}
-          else if(i===1){if(confirm('Eliminar?')){await deleteDoc(doc(db,'cajas',id));showView('main');}}
-        };
-        boxActions.appendChild(btn);
-      });
-      // Presupuesto
+      const editBtn=document.createElement('button'); editBtn.textContent='Editar Caja';
+      editBtn.onclick=async()=>{const n=prompt('Nuevo nombre',data.nombre);if(n)await updateDoc(doc(db,'cajas',id),{nombre:n.trim()});};
+      const delBtn=document.createElement('button'); delBtn.textContent='Eliminar Caja';
+      delBtn.onclick=async()=>{if(confirm('Eliminar?')){await deleteDoc(doc(db,'cajas',id));showView('main');}};
+      boxActions.append(editBtn,delBtn);
+      // Mostrar presupuesto
       budgetDisplay.textContent=`$${data.budget.toFixed(2)}`;
-      budgetForm.onsubmit=async e=>{
-        e.preventDefault();const v=parseFloat(document.getElementById('budget-input').value);
-        if(!isNaN(v))await updateDoc(doc(db,'cajas',id),{budget:v});
-      };
-      // Transacciones
+      budgetForm.onsubmit=async e=>{e.preventDefault();const v=parseFloat(document.getElementById('budget-input').value);if(!isNaN(v))await updateDoc(doc(db,'cajas',id),{budget:v});};
+      // Transacciones y total
       const col=collection(db,`cajas/${id}/transacciones`);
       const q=query(col,orderBy('fecha','desc'));
       onSnapshot(q,snap=>{
         txnTable.innerHTML='';
-        snap.docs.forEach(txn=>{
-          const d=txn.data();
-          const tr=document.createElement('tr');
-          tr.innerHTML=`<td>${new Date(d.fecha.toDate()).toLocaleDateString()}</td><td>${d.tipo}</td><td>$${d.monto.toFixed(2)}</td><td>${d.descripcion}</td><td><button data-id="${txn.id}" class="del">Eliminar</button></td>`;
-          txnTable.appendChild(tr);
+        snap.docs.forEach(txn=>{const d=txn.data();
+          const tr=document.createElement('tr'); tr.innerHTML=
+            `<td>${new Date(d.fecha.toDate()).toLocaleDateString()}</td>`+
+            `<td>${d.tipo}</td><td>$${d.monto.toFixed(2)}</td><td>${d.descripcion}</td>`+
+            `<td><button data-id="${txn.id}" class="del">Eliminar</button></td>`;
+          txnTable.append(tr);
         });
-        // Total y eliminar
+        // actualizar saldos y presupuestos
         getDoc(doc(db,'cajas',id)).then(cs=>{totalDisplay.textContent=`$${cs.data().saldo.toFixed(2)}`;budgetDisplay.textContent=`$${cs.data().budget.toFixed(2)}`;});
-        txnTable.querySelectorAll('.del').forEach(btn=>btn.onclick=async()=>{
-          if(confirm('Eliminar transacción?')){
-            const tid=btn.dataset.id;const d=snap.docs.find(x=>x.id===tid).data();await deleteDoc(doc(db,`cajas/${id}/transacciones`,tid));
-            const ref=doc(db,'cajas',id);const csnap=await getDoc(ref);const newBal=d.tipo==='ingreso'?csnap.data().saldo-d.monto:csnap.data().saldo+d.monto;
-            await updateDoc(ref,{saldo:newBal});
-          }
-        });
+        // eliminar transacción
+        txnTable.querySelectorAll('.del').forEach(btn=>btn.onclick=async()=>{if(confirm('Eliminar transacción?')){const tid=btn.dataset.id;const d=snap.docs.find(x=>x.id===tid).data();await deleteDoc(doc(db,`cajas/${id}/transacciones`,tid));const ref=doc(db,'cajas',id);const csnap=await getDoc(ref);const newBal=d.tipo==='ingreso'?csnap.data().saldo-d.monto:csnap.data().saldo+d.monto;await updateDoc(ref,{saldo:newBal});}});
       });
     }
 
-    // Transacciones formulario
-    txnForm.onsubmit=async e=>{
-      e.preventDefault();const t=e.target.tipo.value,m=parseFloat(e.target.monto.value),desc=e.target.descripcion.value.trim();
-      const ref=doc(db,'cajas',currentBoxId),cs=await getDoc(ref),newBal=t==='ingreso'?cs.data().saldo+m:cs.data().saldo-m;
-      await updateDoc(ref,{saldo:newBal});await addDoc(collection(db,`cajas/${currentBoxId}/transacciones`),{tipo:t,monto:m,descripcion:desc,fecha:serverTimestamp()});e.target.reset();txnModal.style.display='none';
-    };
+    // Guardar transacción manual
+    txnForm.onsubmit=async e=>{e.preventDefault();const t=e.target.tipo.value,m=parseFloat(e.target.monto.value),desc=e.target.descripcion.value.trim();const cref=doc(db,'cajas',currentBoxId),cs=await getDoc(cref),nb=t==='ingreso'?cs.data().saldo+m:cs.data().saldo-m;await updateDoc(cref,{saldo:nb});await addDoc(collection(db,`cajas/${currentBoxId}/transacciones`),{tipo:t,monto:m,descripcion:desc,fecha:serverTimestamp()});e.target.reset();txnModal.style.display='none';};
+
+    // Botón volver
+    document.querySelectorAll('[onclick*="showView"]').forEach(btn=>btn.onclick=()=>showView('main'));
 
     // Init
     renderMain();
@@ -178,9 +175,9 @@
   <style>
     body{font-family:Arial,sans-serif;margin:20px}
     button,input{margin:4px;padding:6px}
-    #detailView,section{display:none}#main-view{display:block}
-    ul,table{width:100%}ul{list-style:none;padding:0}li{cursor:pointer;margin:6px 0}
-    table{border-collapse:collapse;margin-top:10px}th,td{border:1px solid #ccc;padding:6px}
+    section{display:none}#main-view{display:block}
+    ul{list-style:none;padding:0}li{cursor:pointer;margin:6px 0}
+    table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #ccc;padding:6px}
     #transaction-modal{display:none;position:fixed;top:20%;left:50%;transform:translateX(-50%);background:#f9f9f9;padding:20px;border:1px solid #ccc}
     form{margin-top:10px}label,select,input{display:block;width:100%;margin:6px 0;padding:4px}
   </style>
@@ -191,6 +188,7 @@
 
   <!-- Vista Principal -->
   <section id="main-view">
+    <button id="create-box-btn">Nueva Caja</button>
     <h2>Cajas</h2>
     <ul id="boxes-list"></ul>
     <h3>Distribuir Ingreso</h3>
@@ -213,13 +211,16 @@
       <div>Meta actual: <strong id="box-budget"></strong></div>
     </form>
     <button onclick="txnModal.style.display='block'">Agregar Transacción</button>
-    <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Desc</th><th>Acción</th></tr></thead><tbody id="txn-table-body"></tbody></table>
+    <table>
+      <thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Desc</th><th>Acción</th></tr></thead>
+      <tbody id="txn-table-body"></tbody>
+    </table>
   </section>
 
   <!-- Modal Transacción -->
   <div id="transaction-modal">
     <form id="transaction-form">
-      <button onclick="txnModal.style.display='none'" type="button">Cerrar</button>
+      <button type="button" onclick="txnModal.style.display='none'">Cerrar</button>
       <label>Tipo<select name="tipo"><option value="ingreso">Ingreso</option><option value="egreso">Egreso</option></select></label>
       <label>Monto<input name="monto" type="number" step="0.01"/></label>
       <label>Desc<input name="descripcion"/></label>
@@ -228,6 +229,7 @@
   </div>
 </body>
 </html>
+
 
 
 
