@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cajas de Ahorro</title>
+  <title>Cajas de Ahorro v2</title>
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
     import {
@@ -13,12 +13,15 @@
       addDoc,
       onSnapshot,
       updateDoc,
+      deleteDoc,
+      getDocs,
+      getDoc,
       serverTimestamp,
       query,
       orderBy
     } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
-    // Configuración Firebase (pegue esto una sola vez):
+    // Configuración Firebase (pegar una sola vez)
     const firebaseConfig = {
       apiKey: "AIzaSyBwzGlQBLecuTfNYvJrOBIX601OySpVHtA",
       authDomain: "registrogastos-7a816.firebaseapp.com",
@@ -30,125 +33,156 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // Referencias
+    // Colecciones
     const cajasCol = collection(db, 'cajas');
     const distribCol = collection(db, 'distribuciones');
 
-    // Vistas
+    // Vistas y estado
     const mainView = document.getElementById('main-view');
     const boxDetailView = document.getElementById('box-detail-view');
-    const createBoxBtn = document.getElementById('create-box-btn');
-    const distributeBtn = document.getElementById('distribute-btn');
-    const backBtn = document.querySelectorAll('.back-btn');
+    const boxesList = document.getElementById('boxes-list');
+    const boxTitle = document.getElementById('box-title');
+    const txnList = document.getElementById('txn-list');
+    const transactionModal = document.getElementById('transaction-modal');
     const transactionForm = document.getElementById('transaction-form');
-
-    // Estado
     let currentBoxId = null;
 
-    // Mostrar fecha actual
+    // Fecha actual
     document.getElementById('current-date').textContent = new Date().toLocaleDateString();
 
-    // Navegación
+    // Muestra vista
     function showView(view) {
-      [mainView, boxDetailView].forEach(v => v.style.display = 'none');
-      view.style.display = 'block';
+      mainView.style.display = view === 'main' ? 'block' : 'none';
+      boxDetailView.style.display = view === 'detail' ? 'block' : 'none';
     }
-    backBtn.forEach(btn => btn.onclick = () => showView(mainView));
+    showView('main');
 
-    // Render cajas
+    // Render cajas con editar/eliminar
     function renderCajas() {
-      const ul = document.getElementById('boxes-list'); ul.innerHTML = '';
       onSnapshot(cajasCol, snapshot => {
-        ul.innerHTML = '';
+        boxesList.innerHTML = '';
         snapshot.docs.forEach(docSnap => {
           const data = docSnap.data();
           const li = document.createElement('li');
-          li.textContent = `${data.nombre}: $${data.saldo.toFixed(2)}`;
-          li.onclick = () => openBoxDetail(docSnap.id, data.nombre);
-          ul.appendChild(li);
+          // Nombre y saldo
+          const span = document.createElement('span');
+          span.textContent = `${data.nombre}: $${data.saldo.toFixed(2)}`;
+          span.style.cursor = 'pointer';
+          span.onclick = () => openBoxDetail(docSnap.id, data.nombre);
+          li.appendChild(span);
+          // Editar
+          const editBtn = document.createElement('button');
+          editBtn.textContent = 'Editar';
+          editBtn.onclick = async () => {
+            const nuevo = prompt('Nuevo nombre de la caja:', data.nombre);
+            if (nuevo) await updateDoc(doc(db,'cajas',docSnap.id),{nombre: nuevo.trim()});
+          };
+          li.appendChild(editBtn);
+          // Eliminar
+          const delBtn = document.createElement('button');
+          delBtn.textContent = 'Eliminar';
+          delBtn.onclick = async () => {
+            if (confirm(`¿Eliminar caja "${data.nombre}" y todas sus transacciones?`)) {
+              await deleteDoc(doc(db,'cajas',docSnap.id));
+            }
+          };
+          li.appendChild(delBtn);
+          boxesList.appendChild(li);
         });
       });
     }
 
-    // Crear caja
-    createBoxBtn.onclick = () => {
-      const name = prompt('Nombre de la nueva caja:');
-      if (name) addDoc(cajasCol, { nombre: name.trim(), saldo: 0, fechaCreacion: serverTimestamp() });
+    // Crear nueva caja
+    document.getElementById('create-box-btn').onclick = async () => {
+      const nombre = prompt('Nombre de la nueva caja:');
+      if (nombre) await addDoc(cajasCol, { nombre: nombre.trim(), saldo: 0, fechaCreacion: serverTimestamp() });
     };
 
-    // Distribuir ingreso global
-    distributeBtn.onclick = () => {
+    // Distribuir ingreso con porcentajes
+    document.getElementById('distribute-btn').onclick = async () => {
       const total = parseFloat(prompt('Monto total a distribuir:'));
-      if (!isNaN(total)) distributeIncome(total);
-    };
-    async function distributeIncome(total) {
-      const snapshot = await getDocs(cajasCol);
-      const cajaDocs = snapshot.docs;
-      const count = cajaDocs.length;
-      if (count === 0) return alert('No hay cajas para distribuir');
-      const each = total / count;
+      if (isNaN(total)) return alert('Monto inválido');
+      const docs = (await getDocs(cajasCol)).docs;
+      if (!docs.length) return alert('No hay cajas para distribuir');
+      const equal = confirm('Distribución igual entre cajas? (Aceptar = sí)');
       const detalle = [];
-      for (const docSnap of cajaDocs) {
-        const id = docSnap.id;
-        await updateDoc(doc(db, 'cajas', id), { saldo: docSnap.data().saldo + each });
-        detalle.push({ cajaId: id, montoAsignado: each });
+      for (const box of docs) {
+        let asignado;
+        if (equal) {
+          asignado = total / docs.length;
+        } else {
+          const pct = parseFloat(prompt(`Porcentaje para caja "${box.data().nombre}" (%):`));
+          if (isNaN(pct)) return alert('Porcentaje inválido');
+          asignado = total * pct / 100;
+        }
+        // Actualizar saldo
+        await updateDoc(doc(db,'cajas',box.id), { saldo: box.data().saldo + asignado });
+        detalle.push({ cajaId: box.id, montoAsignado: asignado });
       }
+      // Guardar distribución
       await addDoc(distribCol, { fecha: serverTimestamp(), montoTotal: total, detalle });
-    }
+    };
 
-    // Detalle de caja
+    // Abrir detalle de caja
     async function openBoxDetail(id, nombre) {
       currentBoxId = id;
-      document.getElementById('box-title').textContent = nombre;
-      showView(boxDetailView);
+      boxTitle.textContent = nombre;
+      showView('detail');
       const transCol = collection(db, `cajas/${id}/transacciones`);
-      const q = query(transCol, orderBy('fecha', 'desc'));
+      const q = query(transCol, orderBy('fecha','desc'));
       onSnapshot(q, snap => {
-        const ul = document.getElementById('txn-list'); ul.innerHTML = '';
+        txnList.innerHTML = '';
         snap.docs.forEach(txn => {
           const d = txn.data();
           const li = document.createElement('li');
-          li.textContent = `${new Date(d.fecha.toDate()).toLocaleDateString()} - ${d.tipo}: $${d.monto.toFixed(2)} (${d.descripcion})`;
-          ul.appendChild(li);
+          li.textContent = `${new Date(d.fecha.toDate()).toLocaleDateString()} - ${d.tipo.toUpperCase()}: $${d.monto.toFixed(2)} (${d.descripcion})`;
+          txnList.appendChild(li);
         });
       });
-      // Manejador transacción
-      transactionForm.onsubmit = async e => {
-        e.preventDefault();
-        const tipo = e.target.tipo.value;
-        const monto = parseFloat(e.target.monto.value);
-        const desc = e.target.descripcion.value.trim();
-        if (tipo && !isNaN(monto)) {
-          const cajaRef = doc(db, 'cajas', id);
-          const cajaSnap = (await getDoc(cajaRef)).data();
-          const nuevoSaldo = tipo === 'ingreso' ? cajaSnap.saldo + monto : cajaSnap.saldo - monto;
-          await updateDoc(cajaRef, { saldo: nuevoSaldo });
-          await addDoc(transCol, { tipo, monto, descripcion: desc, fecha: serverTimestamp() });
-          e.target.reset();
-        }
-      };
     }
 
-    // Iniciar
+    // Guardar transacción
+    transactionForm.onsubmit = async e => {
+      e.preventDefault();
+      const tipo = e.target.tipo.value;
+      const monto = parseFloat(e.target.monto.value);
+      const desc = e.target.descripcion.value.trim();
+      if (!currentBoxId || isNaN(monto)) return alert('Datos inválidos');
+      // Obtener saldo actual
+      const cajaRef = doc(db,'cajas',currentBoxId);
+      const cajaSnap = await getDoc(cajaRef);
+      const saldoActual = cajaSnap.exists() ? cajaSnap.data().saldo : 0;
+      const nuevoSaldo = tipo === 'ingreso' ? saldoActual + monto : saldoActual - monto;
+      // Actualizar caja y registrar transacción
+      await updateDoc(cajaRef, { saldo: nuevoSaldo });
+      const transCol = collection(db, `cajas/${currentBoxId}/transacciones`);
+      await addDoc(transCol, { tipo, monto, descripcion: desc, fecha: serverTimestamp() });
+      transactionModal.style.display = 'none';
+      e.target.reset();
+    };
+
+    // Botón regresar
+    document.querySelectorAll('.back-btn').forEach(btn => btn.onclick = () => showView('main'));
+
+    // Inicializar
     renderCajas();
   </script>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
-    button { margin-right: 8px; padding: 6px 12px; }
+    button { margin-left: 6px; padding: 4px 8px; }
     section { display: none; }
     #main-view { display: block; }
-    ul { list-style: none; padding-left: 0; }
-    li { margin: 6px 0; cursor: pointer; }
-    h2 { margin-top: 0; }
-    .back-btn { margin-top: 10px; }
-    form { margin-top: 10px; }
-    label, input, select { display: block; margin: 6px 0; }
-    input, select { padding: 6px; width: 100%; box-sizing: border-box; }
+    ul { list-style: none; padding: 0; }
+    li { margin: 6px 0; }
+    #transaction-modal { display: none; background: #eee; padding: 10px; position: fixed; top:20%; left:50%; transform:translateX(-50%); }
+    label, select, input { display: block; margin: 6px 0; }
+    input, select { padding: 6px; width: 100%; }
   </style>
 </head>
 <body>
-  <h1>Cajas de Ahorro</h1>
+  <h1>Cajas de Ahorro v2</h1>
   <div>Fecha actual: <span id="current-date"></span></div>
+
   <section id="main-view">
     <nav>
       <button id="create-box-btn">Nueva Caja</button>
@@ -160,19 +194,18 @@
   <section id="box-detail-view">
     <button class="back-btn">« Volver</button>
     <h2 id="box-title"></h2>
-    <nav>
-      <button onclick="document.getElementById('transaction-modal').style.display='block'">Agregar Transacción</button>
-    </nav>
+    <button onclick="transactionModal.style.display='block'">Agregar Transacción</button>
     <ul id="txn-list"></ul>
-    <div id="transaction-modal" style="display:none;">
+
+    <div id="transaction-modal">
       <form id="transaction-form">
+        <button class="back-btn" type="button" onclick="transactionModal.style.display='none'">Cerrar</button>
         <label>Tipo:
           <select name="tipo"><option value="ingreso">Ingreso</option><option value="egreso">Egreso</option></select>
         </label>
         <label>Monto:<input name="monto" type="number" step="0.01" required /></label>
         <label>Descripción:<input name="descripcion" required /></label>
         <button type="submit">Guardar</button>
-        <button type="button" onclick="this.form.reset(); this.parentElement.style.display='none'">Cancelar</button>
       </form>
     </div>
   </section>
