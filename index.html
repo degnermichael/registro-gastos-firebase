@@ -1,0 +1,102 @@
+<!--
+Paso a Paso para configurar en Stackblitz con Vanilla JavaScript y Firebase
+1. Abre tu navegador y navega a: https://stackblitz.com/fork/html
+2. En el panel izquierdo, elimina cualquier contenido de `index.html`.
+3. Copia todo el siguiente bloque y pégalo en `index.html`:
+-->
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Registro de Gastos</title>
+  <!-- 4. Reemplaza las credenciales de Firebase con las tuyas -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
+    import { getFirestore, collection, addDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBwzGlQBLecuTfNYvJrOBIX601OySpVHtA",            // <- copia tu API Key
+      authDomain: "registrogastos-7a816.firebaseapp.com",
+      projectId: "registrogastos-7a816",
+      storageBucket: "registrogastos-7a816.firebasestorage.app",
+      messagingSenderId: "758483224724",
+      appId: "1:758483224724:web:f04068b22eab2a2c3f4c81"
+    };
+
+    // Inicializa Firebase y Firestore
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const gastosCol = collection(db, 'gastos');
+
+    // Referencias a botones y vistas
+    const viewListBtn = document.getElementById('view-list');
+    const addExpenseBtn = document.getElementById('add-expense');
+    const listView = document.getElementById('list-view');
+    const formView = document.getElementById('form-view');
+
+    viewListBtn.onclick = () => { formView.style.display = 'none'; listView.style.display = 'block'; };
+    addExpenseBtn.onclick = () => { listView.style.display = 'none'; formView.style.display = 'block'; };
+
+    // Muestra gastos en tiempo real
+    onSnapshot(gastosCol, snapshot => {
+      const ul = document.getElementById('expenses-list');
+      ul.innerHTML = '';
+      snapshot.forEach(doc => {
+        const { descripcion, monto, fecha } = doc.data();
+        const li = document.createElement('li');
+        li.textContent = `${fecha}: ${descripcion} — $${monto}`;
+        ul.appendChild(li);
+      });
+    });
+
+    // Guarda un nuevo gasto
+    document.getElementById('expense-form').onsubmit = async e => {
+      e.preventDefault();
+      const descripcion = e.target.descripcion.value;
+      const monto = parseFloat(e.target.monto.value);
+      const fecha = e.target.fecha.value;
+      if (descripcion && monto && fecha) {
+        await addDoc(gastosCol, { descripcion, monto, fecha });
+        e.target.reset();
+        viewListBtn.click();
+      }
+    };
+  </script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    nav button { margin-right: 10px; }
+    section { margin-top: 20px; }
+    ul { list-style: none; padding-left: 0; }
+    li { margin-bottom: 8px; }
+    label { display: block; margin-top: 12px; }
+    input { width: 100%; padding: 8px; margin-top: 4px; }
+    button[type="submit"] { margin-top: 12px; padding: 8px 16px; }
+  </style>
+</head>
+<body>
+  <h1>Registro de Gastos</h1>
+  <nav>
+    <button id="view-list">Ver Gastos</button>
+    <button id="add-expense">Agregar Gasto</button>
+  </nav>
+
+  <section id="list-view">
+    <ul id="expenses-list"></ul>
+  </section>
+
+  <section id="form-view" style="display:none;">
+    <form id="expense-form">
+      <label>Descripción:<input name="descripcion" required /></label>
+      <label>Monto (COP):<input name="monto" type="number" step="0.01" required /></label>
+      <label>Fecha:<input name="fecha" type="date" required /></label>
+      <button type="submit">Guardar</button>
+    </form>
+  </section>
+
+  <!-- 5. Una vez pegado, en la barra derecha de Stackblitz, ve a "Dependencies" y no necesitas agregar nada más;
+       todo corre en el navegador. -->
+  <!-- 6. Por último, en Settings > Environment Variables de Firebase Console, copia tus credenciales y reemplázalas arriba. -->
+</body>
+</html>
