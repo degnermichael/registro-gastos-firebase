@@ -98,30 +98,26 @@
       if (nombre) await addDoc(cajasCol, { nombre: nombre.trim(), saldo: 0, fechaCreacion: serverTimestamp() });
     };
 
-    // Distribuir ingreso con porcentajes
+    // // Distribuir ingreso con porcentaje individual
     document.getElementById('distribute-btn').onclick = async () => {
       const total = parseFloat(prompt('Monto total a distribuir:'));
       if (isNaN(total)) return alert('Monto inválido');
       const docs = (await getDocs(cajasCol)).docs;
       if (!docs.length) return alert('No hay cajas para distribuir');
-      const equal = confirm('Distribución igual entre cajas? (Aceptar = sí)');
       const detalle = [];
       for (const box of docs) {
-        let asignado;
-        if (equal) {
-          asignado = total / docs.length;
-        } else {
-          const pct = parseFloat(prompt(`Porcentaje para caja "${box.data().nombre}" (%):`));
-          if (isNaN(pct)) return alert('Porcentaje inválido');
-          asignado = total * pct / 100;
-        }
+        const nombreBox = box.data().nombre;
+        const pct = parseFloat(prompt(`Porcentaje para caja "${nombreBox}" (%) :`));
+        if (isNaN(pct) || pct < 0) return alert('Porcentaje inválido para ' + nombreBox);
+        const asignado = total * pct / 100;
         // Actualizar saldo
         await updateDoc(doc(db,'cajas',box.id), { saldo: box.data().saldo + asignado });
-        detalle.push({ cajaId: box.id, montoAsignado: asignado });
+        detalle.push({ cajaId: box.id, porcentaje: pct, montoAsignado: asignado });
       }
       // Guardar distribución
       await addDoc(distribCol, { fecha: serverTimestamp(), montoTotal: total, detalle });
     };
+
 
     // Abrir detalle de caja
     async function openBoxDetail(id, nombre) {
