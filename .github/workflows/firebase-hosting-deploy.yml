@@ -1,0 +1,19 @@
+name: Deploy to Firebase Hosting
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Firebase CLI
+        uses: azure/setup-firebase@v2
+        with:
+          firebase-version: "latest"
+
+      - name: Deploy to Firebase
+        run: |
+          firebase deploy --only hosting --project ${{ secrets.PROJECT_ID }} --token ${{ secrets.FIREBASE_TOKEN }}
