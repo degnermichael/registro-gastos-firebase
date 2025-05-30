@@ -1,102 +1,180 @@
-<!--
-Paso a Paso para configurar en Stackblitz con Vanilla JavaScript y Firebase
-1. Abre tu navegador y navega a: https://stackblitz.com/fork/html
-2. En el panel izquierdo, elimina cualquier contenido de `index.html`.
-3. Copia todo el siguiente bloque y pégalo en `index.html`:
--->
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Registro de Gastos</title>
-  <!-- 4. Reemplaza las credenciales de Firebase con las tuyas -->
+  <title>Cajas de Ahorro</title>
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
-    import { getFirestore, collection, addDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
+    import {
+      getFirestore,
+      collection,
+      doc,
+      addDoc,
+      onSnapshot,
+      updateDoc,
+      serverTimestamp,
+      query,
+      orderBy
+    } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
+    // Configuración Firebase (pegue esto una sola vez):
     const firebaseConfig = {
-      apiKey: "AIzaSyBwzGlQBLecuTfNYvJrOBIX601OySpVHtA",            // <- copia tu API Key
+      apiKey: "AIzaSyBwzGlQBLecuTfNYvJrOBIX601OySpVHtA",
       authDomain: "registrogastos-7a816.firebaseapp.com",
       projectId: "registrogastos-7a816",
       storageBucket: "registrogastos-7a816.firebasestorage.app",
       messagingSenderId: "758483224724",
       appId: "1:758483224724:web:f04068b22eab2a2c3f4c81"
     };
-
-    // Inicializa Firebase y Firestore
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const gastosCol = collection(db, 'gastos');
 
-    // Referencias a botones y vistas
-    const viewListBtn = document.getElementById('view-list');
-    const addExpenseBtn = document.getElementById('add-expense');
-    const listView = document.getElementById('list-view');
-    const formView = document.getElementById('form-view');
+    // Referencias
+    const cajasCol = collection(db, 'cajas');
+    const distribCol = collection(db, 'distribuciones');
 
-    viewListBtn.onclick = () => { formView.style.display = 'none'; listView.style.display = 'block'; };
-    addExpenseBtn.onclick = () => { listView.style.display = 'none'; formView.style.display = 'block'; };
+    // Vistas
+    const mainView = document.getElementById('main-view');
+    const boxDetailView = document.getElementById('box-detail-view');
+    const createBoxBtn = document.getElementById('create-box-btn');
+    const distributeBtn = document.getElementById('distribute-btn');
+    const backBtn = document.querySelectorAll('.back-btn');
+    const transactionForm = document.getElementById('transaction-form');
 
-    // Muestra gastos en tiempo real
-    onSnapshot(gastosCol, snapshot => {
-      const ul = document.getElementById('expenses-list');
-      ul.innerHTML = '';
-      snapshot.forEach(doc => {
-        const { descripcion, monto, fecha } = doc.data();
-        const li = document.createElement('li');
-        li.textContent = `${fecha}: ${descripcion} — $${monto}`;
-        ul.appendChild(li);
+    // Estado
+    let currentBoxId = null;
+
+    // Mostrar fecha actual
+    document.getElementById('current-date').textContent = new Date().toLocaleDateString();
+
+    // Navegación
+    function showView(view) {
+      [mainView, boxDetailView].forEach(v => v.style.display = 'none');
+      view.style.display = 'block';
+    }
+    backBtn.forEach(btn => btn.onclick = () => showView(mainView));
+
+    // Render cajas
+    function renderCajas() {
+      const ul = document.getElementById('boxes-list'); ul.innerHTML = '';
+      onSnapshot(cajasCol, snapshot => {
+        ul.innerHTML = '';
+        snapshot.docs.forEach(docSnap => {
+          const data = docSnap.data();
+          const li = document.createElement('li');
+          li.textContent = `${data.nombre}: $${data.saldo.toFixed(2)}`;
+          li.onclick = () => openBoxDetail(docSnap.id, data.nombre);
+          ul.appendChild(li);
+        });
       });
-    });
+    }
 
-    // Guarda un nuevo gasto
-    document.getElementById('expense-form').onsubmit = async e => {
-      e.preventDefault();
-      const descripcion = e.target.descripcion.value;
-      const monto = parseFloat(e.target.monto.value);
-      const fecha = e.target.fecha.value;
-      if (descripcion && monto && fecha) {
-        await addDoc(gastosCol, { descripcion, monto, fecha });
-        e.target.reset();
-        viewListBtn.click();
-      }
+    // Crear caja
+    createBoxBtn.onclick = () => {
+      const name = prompt('Nombre de la nueva caja:');
+      if (name) addDoc(cajasCol, { nombre: name.trim(), saldo: 0, fechaCreacion: serverTimestamp() });
     };
+
+    // Distribuir ingreso global
+    distributeBtn.onclick = () => {
+      const total = parseFloat(prompt('Monto total a distribuir:'));
+      if (!isNaN(total)) distributeIncome(total);
+    };
+    async function distributeIncome(total) {
+      const snapshot = await getDocs(cajasCol);
+      const cajaDocs = snapshot.docs;
+      const count = cajaDocs.length;
+      if (count === 0) return alert('No hay cajas para distribuir');
+      const each = total / count;
+      const detalle = [];
+      for (const docSnap of cajaDocs) {
+        const id = docSnap.id;
+        await updateDoc(doc(db, 'cajas', id), { saldo: docSnap.data().saldo + each });
+        detalle.push({ cajaId: id, montoAsignado: each });
+      }
+      await addDoc(distribCol, { fecha: serverTimestamp(), montoTotal: total, detalle });
+    }
+
+    // Detalle de caja
+    async function openBoxDetail(id, nombre) {
+      currentBoxId = id;
+      document.getElementById('box-title').textContent = nombre;
+      showView(boxDetailView);
+      const transCol = collection(db, `cajas/${id}/transacciones`);
+      const q = query(transCol, orderBy('fecha', 'desc'));
+      onSnapshot(q, snap => {
+        const ul = document.getElementById('txn-list'); ul.innerHTML = '';
+        snap.docs.forEach(txn => {
+          const d = txn.data();
+          const li = document.createElement('li');
+          li.textContent = `${new Date(d.fecha.toDate()).toLocaleDateString()} - ${d.tipo}: $${d.monto.toFixed(2)} (${d.descripcion})`;
+          ul.appendChild(li);
+        });
+      });
+      // Manejador transacción
+      transactionForm.onsubmit = async e => {
+        e.preventDefault();
+        const tipo = e.target.tipo.value;
+        const monto = parseFloat(e.target.monto.value);
+        const desc = e.target.descripcion.value.trim();
+        if (tipo && !isNaN(monto)) {
+          const cajaRef = doc(db, 'cajas', id);
+          const cajaSnap = (await getDoc(cajaRef)).data();
+          const nuevoSaldo = tipo === 'ingreso' ? cajaSnap.saldo + monto : cajaSnap.saldo - monto;
+          await updateDoc(cajaRef, { saldo: nuevoSaldo });
+          await addDoc(transCol, { tipo, monto, descripcion: desc, fecha: serverTimestamp() });
+          e.target.reset();
+        }
+      };
+    }
+
+    // Iniciar
+    renderCajas();
   </script>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
-    nav button { margin-right: 10px; }
-    section { margin-top: 20px; }
+    button { margin-right: 8px; padding: 6px 12px; }
+    section { display: none; }
+    #main-view { display: block; }
     ul { list-style: none; padding-left: 0; }
-    li { margin-bottom: 8px; }
-    label { display: block; margin-top: 12px; }
-    input { width: 100%; padding: 8px; margin-top: 4px; }
-    button[type="submit"] { margin-top: 12px; padding: 8px 16px; }
+    li { margin: 6px 0; cursor: pointer; }
+    h2 { margin-top: 0; }
+    .back-btn { margin-top: 10px; }
+    form { margin-top: 10px; }
+    label, input, select { display: block; margin: 6px 0; }
+    input, select { padding: 6px; width: 100%; box-sizing: border-box; }
   </style>
 </head>
 <body>
-  <h1>Registro de Gastos</h1>
-  <nav>
-    <button id="view-list">Gastos</button>
-    <button id="add-expense">Agregar Gasto</button>
-  </nav>
-
-  <section id="list-view">
-    <ul id="expenses-list"></ul>
+  <h1>Cajas de Ahorro</h1>
+  <div>Fecha actual: <span id="current-date"></span></div>
+  <section id="main-view">
+    <nav>
+      <button id="create-box-btn">Nueva Caja</button>
+      <button id="distribute-btn">Distribuir Ingreso</button>
+    </nav>
+    <ul id="boxes-list"></ul>
   </section>
 
-  <section id="form-view" style="display:none;">
-    <form id="expense-form">
-      <label>Descripción:<input name="descripcion" required /></label>
-      <label>Monto (COP):<input name="monto" type="number" step="0.01" required /></label>
-      <label>Fecha:<input name="fecha" type="date" required /></label>
-      <button type="submit">Guardar</button>
-    </form>
+  <section id="box-detail-view">
+    <button class="back-btn">« Volver</button>
+    <h2 id="box-title"></h2>
+    <nav>
+      <button onclick="document.getElementById('transaction-modal').style.display='block'">Agregar Transacción</button>
+    </nav>
+    <ul id="txn-list"></ul>
+    <div id="transaction-modal" style="display:none;">
+      <form id="transaction-form">
+        <label>Tipo:
+          <select name="tipo"><option value="ingreso">Ingreso</option><option value="egreso">Egreso</option></select>
+        </label>
+        <label>Monto:<input name="monto" type="number" step="0.01" required /></label>
+        <label>Descripción:<input name="descripcion" required /></label>
+        <button type="submit">Guardar</button>
+        <button type="button" onclick="this.form.reset(); this.parentElement.style.display='none'">Cancelar</button>
+      </form>
+    </div>
   </section>
-
-  <!-- 5. Una vez pegado, en la barra derecha de Stackblitz, ve a "Dependencies" y no necesitas agregar nada más;
-       todo corre en el navegador. -->
-  <!-- 6. Por último, en Settings > Environment Variables de Firebase Console, copia tus credenciales y reemplázalas arriba. -->
 </body>
 </html>
