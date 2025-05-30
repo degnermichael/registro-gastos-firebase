@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cajas de Ahorro v2</title>
+  <title>Cajas de Ahorro v3</title>
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
     import {
@@ -42,51 +42,33 @@
     const boxDetailView = document.getElementById('box-detail-view');
     const boxesList = document.getElementById('boxes-list');
     const boxTitle = document.getElementById('box-title');
-    const txnList = document.getElementById('txn-list');
-    const transactionModal = document.getElementById('transaction-modal');
-    const transactionForm = document.getElementById('transaction-form');
+    const txnTable = document.getElementById('txn-table-body');
+    const totalDisplay = document.getElementById('box-total');
+    const addTxnBtn = document.getElementById('open-txn-form');
+    const txnForm = document.getElementById('transaction-form');
+    const txnModal = document.getElementById('transaction-modal');
     let currentBoxId = null;
 
     // Fecha actual
     document.getElementById('current-date').textContent = new Date().toLocaleDateString();
 
-    // Muestra vista
+    // Mostrar vista
     function showView(view) {
       mainView.style.display = view === 'main' ? 'block' : 'none';
       boxDetailView.style.display = view === 'detail' ? 'block' : 'none';
     }
     showView('main');
 
-    // Render cajas con editar/eliminar
+    // Render cajas
     function renderCajas() {
       onSnapshot(cajasCol, snapshot => {
         boxesList.innerHTML = '';
         snapshot.docs.forEach(docSnap => {
           const data = docSnap.data();
           const li = document.createElement('li');
-          // Nombre y saldo
-          const span = document.createElement('span');
-          span.textContent = `${data.nombre}: $${data.saldo.toFixed(2)}`;
-          span.style.cursor = 'pointer';
-          span.onclick = () => openBoxDetail(docSnap.id, data.nombre);
-          li.appendChild(span);
-          // Editar
-          const editBtn = document.createElement('button');
-          editBtn.textContent = 'Editar';
-          editBtn.onclick = async () => {
-            const nuevo = prompt('Nuevo nombre de la caja:', data.nombre);
-            if (nuevo) await updateDoc(doc(db,'cajas',docSnap.id),{nombre: nuevo.trim()});
-          };
-          li.appendChild(editBtn);
-          // Eliminar
-          const delBtn = document.createElement('button');
-          delBtn.textContent = 'Eliminar';
-          delBtn.onclick = async () => {
-            if (confirm(`¿Eliminar caja "${data.nombre}" y todas sus transacciones?`)) {
-              await deleteDoc(doc(db,'cajas',docSnap.id));
-            }
-          };
-          li.appendChild(delBtn);
+          li.textContent = `${data.nombre}: $${data.saldo.toFixed(2)}`;
+          li.style.cursor = 'pointer';
+          li.onclick = () => openBoxDetail(docSnap.id, data.nombre);
           boxesList.appendChild(li);
         });
       });
@@ -98,7 +80,7 @@
       if (nombre) await addDoc(cajasCol, { nombre: nombre.trim(), saldo: 0, fechaCreacion: serverTimestamp() });
     };
 
-    // // Distribuir ingreso con porcentaje individual
+    // Distribuir ingreso
     document.getElementById('distribute-btn').onclick = async () => {
       const total = parseFloat(prompt('Monto total a distribuir:'));
       if (isNaN(total)) return alert('Monto inválido');
@@ -106,77 +88,98 @@
       if (!docs.length) return alert('No hay cajas para distribuir');
       const detalle = [];
       for (const box of docs) {
-        const nombreBox = box.data().nombre;
-        const pct = parseFloat(prompt(`Porcentaje para caja "${nombreBox}" (%) :`));
-        if (isNaN(pct) || pct < 0) return alert('Porcentaje inválido para ' + nombreBox);
+        const pct = parseFloat(prompt(`Porcentaje para caja "${box.data().nombre}" (%):`));
+        if (isNaN(pct) || pct < 0) return alert('Porcentaje inválido');
         const asignado = total * pct / 100;
-        // Actualizar saldo
         await updateDoc(doc(db,'cajas',box.id), { saldo: box.data().saldo + asignado });
         detalle.push({ cajaId: box.id, porcentaje: pct, montoAsignado: asignado });
       }
-      // Guardar distribución
       await addDoc(distribCol, { fecha: serverTimestamp(), montoTotal: total, detalle });
     };
 
-
     // Abrir detalle de caja
-    async function openBoxDetail(id, nombre) {
+    function openBoxDetail(id, nombre) {
       currentBoxId = id;
       boxTitle.textContent = nombre;
       showView('detail');
       const transCol = collection(db, `cajas/${id}/transacciones`);
       const q = query(transCol, orderBy('fecha','desc'));
       onSnapshot(q, snap => {
-        txnList.innerHTML = '';
-        snap.docs.forEach(txn => {
-          const d = txn.data();
-          const li = document.createElement('li');
-          li.textContent = `${new Date(d.fecha.toDate()).toLocaleDateString()} - ${d.tipo.toUpperCase()}: $${d.monto.toFixed(2)} (${d.descripcion})`;
-          txnList.appendChild(li);
+        // Actualizar tabla
+        txnTable.innerHTML = '';
+        snap.docs.forEach(txnSnap => {
+          const d = txnSnap.data();
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${new Date(d.fecha.toDate()).toLocaleDateString()}</td>
+            <td>${d.tipo.toUpperCase()}</td>
+            <td>$${d.monto.toFixed(2)}</td>
+            <td>${d.descripcion}</td>
+            <td><button data-id="${txnSnap.id}" class="del-txn-btn">Eliminar</button></td>
+          `;
+          txnTable.appendChild(row);
+        });
+        // Total disponible
+        getDoc(doc(db,'cajas',id)).then(snapCaja => {
+          totalDisplay.textContent = `$${snapCaja.data().saldo.toFixed(2)}`;
+        });
+        // Delegación de eliminación
+        document.querySelectorAll('.del-txn-btn').forEach(btn => {
+          btn.onclick = async () => {
+            if (confirm('Eliminar esta transacción?')) {
+              await deleteDoc(doc(db, `cajas/${id}/transacciones`, btn.dataset.id));
+              // Ajustar saldo
+              const dSnap = snap.docs.find(x=>x.id===btn.dataset.id).data();
+              const cajaRef = doc(db,'cajas',id);
+              const cajaSnap = await getDoc(cajaRef);
+              const saldoAct = cajaSnap.data().saldo;
+              const ajuste = dSnap.tipo==='ingreso' ? -dSnap.monto : dSnap.monto;
+              await updateDoc(cajaRef,{ saldo: saldoAct + ajuste });
+            }
+          };
         });
       });
     }
 
-    // Guardar transacción
-    transactionForm.onsubmit = async e => {
+    // Agregar transacción
+    addTxnBtn.onclick = () => txnModal.style.display='block';
+    txnForm.onsubmit = async e => {
       e.preventDefault();
       const tipo = e.target.tipo.value;
       const monto = parseFloat(e.target.monto.value);
       const desc = e.target.descripcion.value.trim();
-      if (!currentBoxId || isNaN(monto)) return alert('Datos inválidos');
-      // Obtener saldo actual
+      if (isNaN(monto)) return alert('Monto inválido');
       const cajaRef = doc(db,'cajas',currentBoxId);
       const cajaSnap = await getDoc(cajaRef);
-      const saldoActual = cajaSnap.exists() ? cajaSnap.data().saldo : 0;
-      const nuevoSaldo = tipo === 'ingreso' ? saldoActual + monto : saldoActual - monto;
-      // Actualizar caja y registrar transacción
-      await updateDoc(cajaRef, { saldo: nuevoSaldo });
+      const nuevoSaldo = tipo==='ingreso' ? cajaSnap.data().saldo + monto : cajaSnap.data().saldo - monto;
+      await updateDoc(cajaRef,{ saldo: nuevoSaldo });
       const transCol = collection(db, `cajas/${currentBoxId}/transacciones`);
-      await addDoc(transCol, { tipo, monto, descripcion: desc, fecha: serverTimestamp() });
-      transactionModal.style.display = 'none';
+      await addDoc(transCol,{ tipo, monto, descripcion: desc, fecha: serverTimestamp() });
       e.target.reset();
+      txnModal.style.display='none';
     };
 
-    // Botón regresar
+    // Botón volver
     document.querySelectorAll('.back-btn').forEach(btn => btn.onclick = () => showView('main'));
 
-    // Inicializar
+    // Iniciar
     renderCajas();
   </script>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
-    button { margin-left: 6px; padding: 4px 8px; }
+    button { padding: 4px 8px; margin: 2px; }
     section { display: none; }
     #main-view { display: block; }
     ul { list-style: none; padding: 0; }
-    li { margin: 6px 0; }
-    #transaction-modal { display: none; background: #eee; padding: 10px; position: fixed; top:20%; left:50%; transform:translateX(-50%); }
-    label, select, input { display: block; margin: 6px 0; }
-    input, select { padding: 6px; width: 100%; }
+    li { margin: 6px 0; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+    #transaction-modal { display: none; position: fixed; top:20%; left:50%; transform:translateX(-50%); background: #f9f9f9; padding: 20px; border: 1px solid #ccc; }
+    label, select, input { display: block; margin: 6px 0; width: 100%; padding: 4px; }
   </style>
 </head>
 <body>
-  <h1>Cajas de Ahorro v2</h1>
+  <h1>Cajas de Ahorro v3</h1>
   <div>Fecha actual: <span id="current-date"></span></div>
 
   <section id="main-view">
@@ -190,12 +193,15 @@
   <section id="box-detail-view">
     <button class="back-btn">« Volver</button>
     <h2 id="box-title"></h2>
-    <button onclick="transactionModal.style.display='block'">Agregar Transacción</button>
-    <ul id="txn-list"></ul>
-
+    <div>Total disponible: <strong id="box-total"></strong></div>
+    <button id="open-txn-form">Agregar Transacción</button>
+    <table>
+      <thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Descripción</th><th>Acción</th></tr></thead>
+      <tbody id="txn-table-body"></tbody>
+    </table>
     <div id="transaction-modal">
       <form id="transaction-form">
-        <button class="back-btn" type="button" onclick="transactionModal.style.display='none'">Cerrar</button>
+        <button class="back-btn" type="button" onclick="txnModal.style.display='none'">Cerrar</button>
         <label>Tipo:
           <select name="tipo"><option value="ingreso">Ingreso</option><option value="egreso">Egreso</option></select>
         </label>
@@ -207,3 +213,4 @@
   </section>
 </body>
 </html>
+
