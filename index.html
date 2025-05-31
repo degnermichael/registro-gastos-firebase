@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cajas de Ahorro v5 Sin Distribución (Fix Cerrar Modal)</title>
+  <title>Cajas de Ahorro v5 Full - Estilo Turquesa</title>
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
     import {
@@ -88,7 +88,7 @@
       if (nombre) await addDoc(cajasCol, { nombre: nombre.trim(), saldo: 0, budget: 0, fechaCreacion: serverTimestamp() });
     };
 
-    // Abrir detalle caja (v4) con transacciones incluyendo fecha editable
+    // Abrir detalle caja
     function openDetail(id, data) {
       currentBoxId = id; showView('detail');
       boxTitle.textContent = data.nombre;
@@ -164,17 +164,136 @@
     renderMain();
   </script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    button, input { margin: 4px; padding: 6px; }
-    section { display: none; }
-    #main-view { display: block; }
-    ul { list-style: none; padding: 0; }
-    li { cursor: pointer; margin: 6px 0; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border: 1px solid #ccc; padding: 6px; }
-    #transaction-modal { display: none; position: fixed; top: 20%; left: 50%; transform: translateX(-50%); background: #f9f9f9; padding: 20px; border: 1px solid #ccc; }
-    form { margin-top: 10px; }
-    label, select, input { display: block; width: 100%; margin: 6px 0; padding: 4px; }
+    :root {
+      --turq-light: #d1f5f8;
+      --turq-main: #54cbe5;
+      --turq-dark: #3a9cb1;
+      --white: #fff;
+      --shadow: 0 6px 24px 0 rgba(80, 120, 140, 0.18);
+    }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      margin: 0;
+      background: linear-gradient(120deg, var(--turq-light) 0%, var(--turq-main) 100%);
+      min-height: 100vh;
+    }
+    h1 {
+      color: var(--turq-dark);
+      letter-spacing: 1px;
+      text-shadow: 1px 2px 8px #bbe9f2cc;
+      padding-top: 28px;
+      padding-left: 24px;
+    }
+    #current-date {
+      color: var(--turq-dark);
+      font-weight: 500;
+      padding-left: 24px;
+    }
+    section, #transaction-modal {
+      background: var(--white);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      margin: 30px auto 0 auto;
+      max-width: 640px;
+      padding: 22px 32px 36px 32px;
+      border: 1.5px solid var(--turq-main);
+      transition: box-shadow 0.3s;
+    }
+    button {
+      background: var(--turq-main);
+      color: var(--white);
+      border: none;
+      border-radius: 7px;
+      font-weight: 600;
+      font-size: 1rem;
+      padding: 8px 20px;
+      box-shadow: 0 2px 10px 0 #bbe9f2cc;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    button:hover {
+      background: var(--turq-dark);
+      box-shadow: 0 4px 16px 0 #97d8e4cc;
+    }
+    input, select {
+      border: 1.5px solid var(--turq-main);
+      border-radius: 6px;
+      padding: 7px 9px;
+      margin-top: 2px;
+      margin-bottom: 12px;
+      background: #f6fdff;
+      font-size: 1rem;
+      width: 100%;
+    }
+    label { margin-top: 10px; color: #2997a3; font-weight: 500; }
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+    li {
+      cursor: pointer;
+      margin: 8px 0;
+      padding: 10px 16px;
+      background: #e0faff;
+      border-radius: 8px;
+      color: #086e7e;
+      font-size: 1.07rem;
+      font-weight: 500;
+      box-shadow: 0 2px 6px 0 #b6eaf5aa;
+      transition: background 0.18s, color 0.18s;
+    }
+    li:hover {
+      background: var(--turq-main);
+      color: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      background: #fafdfe;
+      border-radius: 9px;
+      box-shadow: 0 2px 9px 0 #bde9f6cc;
+    }
+    th, td {
+      border: 1px solid #b0e3f7;
+      padding: 7px;
+      text-align: left;
+      color: #20606a;
+    }
+    th {
+      background: var(--turq-main);
+      color: var(--white);
+      font-weight: 600;
+    }
+    #transaction-modal {
+      display: none; 
+      position: fixed;
+      top: 13%;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      width: 320px;
+      box-shadow: 0 8px 32px 0 #68bbd4cc;
+      border: 1.7px solid var(--turq-dark);
+      padding: 20px 24px 28px 24px;
+    }
+    #transaction-modal form {
+      margin: 0;
+      padding: 0;
+      background: none;
+      box-shadow: none;
+    }
+    #add-txn-btn {
+      margin-top: 14px;
+      width: 100%;
+    }
+    @media (max-width: 650px) {
+      section, #transaction-modal {
+        max-width: 98vw;
+        padding: 8vw 2vw 7vw 2vw;
+      }
+      #transaction-modal { width: 95vw; }
+    }
   </style>
 </head>
 <body>
@@ -193,7 +312,7 @@
     <button onclick="showView('main')">« Volver</button>
     <h2 id="box-title"></h2>
     <div id="box-actions"></div>
-    <div>Disponible</div>
+    <div style="font-size:1.18rem;color:#18a8b5;margin-bottom:7px;font-weight:600">Disponible</div>
     <div>Total: <strong id="box-total"></strong></div>
     <form id="budget-form">
       <label>Meta:<input id="budget-input" type="number"/></label>
