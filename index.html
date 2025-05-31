@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cajas de Ahorro v6 Full</title>
+  <title>Cajas de Ahorro v5 Full</title>
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
     import {
       getFirestore,
       collection,
@@ -14,11 +14,12 @@
       onSnapshot,
       updateDoc,
       deleteDoc,
+      getDocs,
       getDoc,
       serverTimestamp,
       query,
       orderBy
-    } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
+    } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
     // Config Firebase
     const firebaseConfig = {
@@ -32,40 +33,41 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    const cajasCol = collection(db, "cajas");
-    const distribCol = collection(db, "distribuciones");
+    // Colecciones
+    const cajasCol = collection(db, 'cajas');
+    const distribCol = collection(db, 'distribuciones');
 
+    // Estado
     let cajas = [];
     let currentBoxId = null;
 
-    // UI elements
-    const mainView = document.getElementById("main-view");
-    const detailView = document.getElementById("box-detail-view");
-    const boxesList = document.getElementById("boxes-list");
-    const pctInputs = document.getElementById("pct-inputs");
-    const amtInput = document.getElementById("amt-input");
-    const calcResults = document.getElementById("calc-results");
-    const distributeBtn = document.getElementById("distribute-btn");
-    const boxTitle = document.getElementById("box-title");
-    const boxActions = document.getElementById("box-actions");
-    const totalDisplay = document.getElementById("box-total");
-    const budgetInput = document.getElementById("budget-input");
-    const budgetForm = document.getElementById("budget-form");
-    const txnTable = document.getElementById("txn-table-body");
-    const txnModal = document.getElementById("transaction-modal");
-    const txnForm = document.getElementById("transaction-form");
+    // UI Elements
+    const mainView = document.getElementById('main-view');
+    const detailView = document.getElementById('box-detail-view');
+    const boxesList = document.getElementById('boxes-list');
+    const pctInputs = document.getElementById('pct-inputs');
+    const amtInput = document.getElementById('amt-input');
+    const calcResults = document.getElementById('calc-results');
+    const distributeBtn = document.getElementById('distribute-btn');
+    const boxTitle = document.getElementById('box-title');
+    const boxActions = document.getElementById('box-actions');
+    const totalDisplay = document.getElementById('box-total');
+    const budgetForm = document.getElementById('budget-form');
+    const txnTable = document.getElementById('txn-table-body');
+    const txnModal = document.getElementById('transaction-modal');
+    const txnForm = document.getElementById('transaction-form');
 
-    // Mostrar fecha actual
-    document.getElementById("current-date").textContent = new Date().toLocaleDateString();
+    // Mostrar fecha
+    document.getElementById('current-date').textContent = new Date().toLocaleDateString();
 
     // Navegación vistas
-    function showView(view) {
-      mainView.style.display = view === 'main' ? 'block' : 'none';
-      detailView.style.display = view === 'detail' ? 'block' : 'none';
+    function showView(name) {
+      mainView.style.display = name === 'main' ? 'block' : 'none';
+      detailView.style.display = name === 'detail' ? 'block' : 'none';
     }
     showView('main');
 
-    // Render pantalla principal con inputs y botones
+    // Renderizar principal (v5 full)
     function renderMain() {
       onSnapshot(cajasCol, snapshot => {
         cajas = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -74,97 +76,206 @@
         calcResults.innerHTML = '';
         snapshot.docs.forEach(docSnap => {
           const data = docSnap.data();
-          const row = document.createElement('div');
-          row.className = 'box-row';
-          row.innerHTML = `
-            <span class="box-name">${data.nombre}</span>
-            <span class="box-saldo">$${data.saldo.toFixed(2)}</span>
-            <input type="number" min="0" placeholder="%" class="pct-input" data-id="${docSnap.id}" />
-            <input type="number" min="0" placeholder="Monto" class="single-amt-input" data-id="${docSnap.id}" />
-            <button class="apply-btn" data-id="${docSnap.id}">Aplicar</button>
-          `;
-          boxesList.appendChild(row);
-        });
-        // listeners para aplicar
-        document.querySelectorAll('.apply-btn').forEach(btn => {
-          btn.onclick = async () => {
-            const id = btn.dataset.id;
-            const pct = parseFloat(document.querySelector(`.pct-input[data-id="${id}"]`).value) || 0;
-            const singleAmt = parseFloat(document.querySelector(`.single-amt-input[data-id="${id}"]`).value) || 0;
-            let amountToAdd = singleAmt;
-            if (pct > 0) {
-              const total = parseFloat(amtInput.value) || 0;
-              amountToAdd = (total * pct) / 100;
-            }
-            if (amountToAdd <= 0) return;
-            const boxRef = doc(db, 'cajas', id);
-            const boxSnap = await getDoc(boxRef);
-            const newSaldo = (boxSnap.data().saldo || 0) + amountToAdd;
-            await updateDoc(boxRef, { saldo: newSaldo });
-            const transCol = collection(db, `cajas/${id}/transacciones`);
-            await addDoc(transCol, {
-              tipo: singleAmt > 0 ? 'manual' : 'distribución',
-              monto: amountToAdd,
-              descripcion: singleAmt > 0 ? 'Aplicación individual' : 'Distribución global',
-              fecha: serverTimestamp()
-            });
-            renderMain();
-          };
+          // Lista
+          const li = document.createElement('li');
+          const meta = data.budget ? ` (Meta: $${data.budget})` : '';
+          li.textContent = `${data.nombre}: $${data.saldo.toFixed(2)}${meta}`;
+          li.style.cursor = 'pointer'; li.onclick = () => openDetail(docSnap.id, data);
+          boxesList.appendChild(li);
+          // Input %
+          const inp = document.createElement('input'); inp.type = 'number'; inp.min = 0; inp.max = 100;
+          inp.placeholder = `% ${data.nombre}`; inp.dataset.id = docSnap.id;
+          inp.oninput = calculateAllocation;
+          pctInputs.appendChild(inp);
         });
       });
     }
 
-        // Botón nueva caja
+    // Crear caja
     document.getElementById('create-box-btn').onclick = async () => {
       const nombre = prompt('Nombre de la nueva caja:');
-      if (nombre) {
-        const docRef = await addDoc(cajasCol, { nombre: nombre.trim(), saldo: 0, budget: 0, fechaCreacion: serverTimestamp() });
-        // After creating, re-render main and go to detail
-        renderMain();
-        const newBoxData = (await getDoc(docRef)).data();
-        openDetail(docRef.id, newBoxData);
-      }
+      if (nombre) await addDoc(cajasCol, { nombre: nombre.trim(), saldo: 0, budget: 0, fechaCreacion: serverTimestamp() });
     };
 
-    // Calcular y distribuir globales
-    function calculateAllocation() { /* igual que antes */ }
-    distributeBtn.onclick = async () => { /* igual que antes, manteniendo global */ };
+    // Calcular asignaciones
+    function calculateAllocation() {
+      calcResults.innerHTML = '';
+      const total = parseFloat(amtInput.value);
+      if (isNaN(total)) return;
+      let sumPct = 0;
+      cajas.forEach(box => {
+        const inp = pctInputs.querySelector(`input[data-id="${box.id}"]`);
+        const pct = parseFloat(inp.value) || 0; sumPct += pct;
+        const amount = (total * pct) / 100;
+        const div = document.createElement('div');
+        div.textContent = `${box.nombre}: ${pct}% → $${amount.toFixed(2)}`;
+        calcResults.appendChild(div);
+      });
+      const acc = document.createElement('div'); acc.textContent = `Total % ingresado: ${sumPct.toFixed(2)}%`;
+      calcResults.appendChild(acc);
+    }
 
-    // Detalle caja y transacciones (v4)
-    function openDetail(id, data) { /* idem versión anterior */ }
-    txnForm.onsubmit = async e => { /* idem versión anterior */ };
+    // Distribuir con registro en transacciones
+    distributeBtn.onclick = async () => {
+      const total = parseFloat(amtInput.value);
+      if (isNaN(total)) return alert('Monto inválido');
+      const detalle = [];
+      for (const box of cajas) {
+        const inp = pctInputs.querySelector(`input[data-id="${box.id}"]`);
+        const pct = parseFloat(inp.value) || 0;
+        const amount = (total * pct) / 100;
+        if (amount > 0) {
+          const boxRef = doc(db, 'cajas', box.id);
+          const boxSnap = await getDoc(boxRef);
+          const newSaldo = (boxSnap.data().saldo || 0) + amount;
+          await updateDoc(boxRef, { saldo: newSaldo });
 
-    // Botón volver
+          // registrar transacción de distribución en la caja
+          const transCol = collection(db, `cajas/${box.id}/transacciones`);
+          await addDoc(transCol, {
+            tipo: 'distribución', monto: amount,
+            descripción: 'Distribución global', fecha: serverTimestamp()
+          });
+
+          detalle.push({ cajaId: box.id, porcentaje: pct, montoAsignado: amount });
+        }
+      }
+      // ms registro global
+      await addDoc(distribCol, { fecha: serverTimestamp(), montoTotal: total, detalle });
+      amtInput.value = '';
+      pctInputs.querySelectorAll('input').forEach(i => i.value = '');
+      calcResults.innerHTML = 'Distribución realizada';
+    };
+
+    // Abrir detalle caja (v4)
+    function openDetail(id, data) {
+      currentBoxId = id; showView('detail');
+      // acciones
+      boxTitle.textContent = data.nombre;
+      boxActions.innerHTML = '';
+      const editBtn = document.createElement('button'); editBtn.textContent = 'Editar Caja';
+      editBtn.onclick = async () => { const n = prompt('Nuevo nombre', data.nombre); if (n) await updateDoc(doc(db, 'cajas', id), { nombre: n.trim() }); };
+      const delBtn = document.createElement('button'); delBtn.textContent = 'Eliminar Caja';
+      delBtn.onclick = async () => { if (confirm('¿Eliminar esta caja?')) { await deleteDoc(doc(db, 'cajas', id)); showView('main'); } };
+      boxActions.append(editBtn, delBtn);
+      // presupuesto
+      budgetForm.onsubmit = async e => { e.preventDefault(); const v = parseFloat(document.getElementById('budget-input').value); if (!isNaN(v)) await updateDoc(doc(db, 'cajas', id), { budget: v }); };
+      document.getElementById('budget-input').value = data.budget;
+
+      // transacciones
+      const col = collection(db, `cajas/${id}/transacciones`);
+      const q = query(col, orderBy('fecha', 'desc'));
+      onSnapshot(q, snap => {
+        txnTable.innerHTML = '';
+        snap.docs.forEach(txn => {
+          const d = txn.data();
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${new Date(d.fecha.toDate()).toLocaleDateString()}</td>
+            <td>${d.tipo}</td>
+            <td>$${d.monto.toFixed(2)}</td>
+            <td>${d.descripción || d.descripcion}</td>
+            <td><button data-id="${txn.id}" class="del">Eliminar</button></td>
+          `;
+          txnTable.append(tr);
+        });
+        getDoc(doc(db, 'cajas', id)).then(cs => { totalDisplay.textContent = `$${cs.data().saldo.toFixed(2)}`; });
+        txnTable.querySelectorAll('.del').forEach(btn => btn.onclick = async () => {
+          if (confirm('Eliminar transacción?')) {
+            const tid = btn.dataset.id;
+            const d = snap.docs.find(x => x.id === tid).data();
+            await deleteDoc(doc(db, `cajas/${id}/transacciones`, tid));
+            const ref = doc(db, 'cajas', id);
+            const csnap = await getDoc(ref);
+            const newBal = d.tipo === 'ingreso' ? csnap.data().saldo - d.monto : csnap.data().saldo + d.monto;
+            await updateDoc(ref, { saldo: newBal });
+          }
+        });
+      });
+    }
+
+    // transacción manual
+    txnForm.onsubmit = async e => {
+      e.preventDefault();
+      const tipo = e.target.tipo.value;
+      const monto = parseFloat(e.target.monto.value);
+      const desc = e.target.descripcion.value.trim();
+      const ref = doc(db, 'cajas', currentBoxId);
+      const csnap = await getDoc(ref);
+      const newBal = tipo === 'ingreso' ? csnap.data().saldo + monto : csnap.data().saldo - monto;
+      await updateDoc(ref, { saldo: newBal });
+      await addDoc(collection(db, `cajas/${currentBoxId}/transacciones`), { tipo, monto, desc, fecha: serverTimestamp() });
+      e.target.reset(); txnModal.style.display = 'none';
+    };
+
+    // volver
     document.querySelectorAll('[onclick*="showView"]').forEach(btn => btn.onclick = () => showView('main'));
 
-    // Inicializar
+    // init
     renderMain();
   </script>
   <style>
-    .box-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
-    .box-name, .box-saldo { width: 100px; }
-    .pct-input, .single-amt-input { width: 60px; }
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    button, input { margin: 4px; padding: 6px; }
+    section { display: none; }
+    #main-view { display: block; }
+    ul { list-style: none; padding: 0; }
+    li { cursor: pointer; margin: 6px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 6px; }
+    #transaction-modal { display: none; position: fixed; top: 20%; left: 50%; transform: translateX(-50%); background: #f9f9f9; padding: 20px; border: 1px solid #ccc; }
+    form { margin-top: 10px; }
+    label, select, input { display: block; width: 100%; margin: 6px 0; padding: 4px; }
   </style>
 </head>
 <body>
-  <h1>Cajas de Ahorro v6 Full</h1>
+  <h1>Cajas de Ahorro v5 Full</h1>
   <div>Fecha: <span id="current-date"></span></div>
 
+  <!-- Vista Principal -->
   <section id="main-view">
     <button id="create-box-btn">Nueva Caja</button>
-    <div id="boxes-list"></div>
-    <h3>Distribución global</h3>
+    <h2>Cajas</h2>
+    <ul id="boxes-list"></ul>
+    <h3>Distribuir Ingreso</h3>
     <input id="amt-input" type="number" placeholder="Monto total" />
+    <div id="pct-inputs"></div>
     <button onclick="calculateAllocation()">Calcular</button>
     <button id="distribute-btn">Distribuir</button>
     <div id="calc-results"></div>
   </section>
 
+  <!-- Vista Detalle Caja -->
   <section id="box-detail-view">
-    <!-- Detalle idéntico a v5 -->
+    <button onclick="showView('main')">« Volver</button>
+    <h2 id="box-title"></h2>
+    <div id="box-actions"></div>
+    <div>Total: <strong id="box-total"></strong></div>
+    <form id="budget-form">
+      <label>Meta:<input id="budget-input" type="number"/></label>
+      <button type="submit">Guardar Meta</button>
+      <div>Meta actual: <strong id="box-budget"></strong></div>
+    </form>
+    <button onclick="txnModal.style.display='block'">Agregar Transacción</button>
+    <table>
+      <thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Desc</th><th>Acción</th></tr></thead>
+      <tbody id="txn-table-body"></tbody>
+    </table>
   </section>
+
+  <!-- Modal Transacción -->
+  <div id="transaction-modal">
+    <form id="transaction-form">
+      <button type="button" onclick="txnModal.style.display='none'">Cerrar</button>
+      <label>Tipo<select name="tipo"><option value="ingreso">Ingreso</option><option value="egreso">Egreso</option></select></label>
+      <label>Monto<input name="monto" type="number" step="0.01"/></label>
+      <label>Desc<input name="descripcion"/></label>
+      <button type="submit">Guardar</button>
+    </form>
+  </div>
 </body>
 </html>
+
 
 
 
