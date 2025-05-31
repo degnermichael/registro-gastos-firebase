@@ -114,10 +114,16 @@
       });
     }
 
-    // Botón nueva caja
+        // Botón nueva caja
     document.getElementById('create-box-btn').onclick = async () => {
       const nombre = prompt('Nombre de la nueva caja:');
-      if (nombre) await addDoc(cajasCol, { nombre: nombre.trim(), saldo: 0, budget: 0, fechaCreacion: serverTimestamp() });
+      if (nombre) {
+        const docRef = await addDoc(cajasCol, { nombre: nombre.trim(), saldo: 0, budget: 0, fechaCreacion: serverTimestamp() });
+        // After creating, re-render main and go to detail
+        renderMain();
+        const newBoxData = (await getDoc(docRef)).data();
+        openDetail(docRef.id, newBoxData);
+      }
     };
 
     // Calcular y distribuir globales
