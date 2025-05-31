@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cajas de Ahorro v5 Sin Distribución</title>
+  <title>Cajas de Ahorro v5 Sin Distribución (Fix Cerrar Modal)</title>
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
     import {
@@ -54,6 +54,7 @@
     const budgetInput = document.getElementById('budget-input');
     const budgetDisplay = document.getElementById('box-budget');
     const addTxnBtn = document.getElementById('add-txn-btn');
+    const closeTxnBtn = document.getElementById('close-txn-btn');
 
     // Mostrar fecha
     document.getElementById('current-date').textContent = new Date().toLocaleDateString();
@@ -133,6 +134,7 @@
       });
       // Mostrar modal correctamente
       if(addTxnBtn) addTxnBtn.onclick = () => { txnModal.style.display = 'block'; };
+      if(closeTxnBtn) closeTxnBtn.onclick = () => { txnModal.style.display = 'none'; };
     }
 
     // transacción manual con fecha seleccionable
@@ -208,7 +210,7 @@
   <!-- Modal Transacción -->
   <div id="transaction-modal">
     <form id="transaction-form">
-      <button type="button" onclick="txnModal.style.display='none'">Cerrar</button>
+      <button id="close-txn-btn" type="button">Cerrar</button>
       <label>Tipo<select name="tipo"><option value="ingreso">Ingreso</option><option value="egreso">Egreso</option></select></label>
       <label>Monto<input name="monto" type="number" step="0.01"/></label>
       <label>Desc<input name="descripcion"/></label>
