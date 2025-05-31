@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cajas de Ahorro v5 Full (Transacciones con Fecha)</title>
+  <title>Cajas de Ahorro v5 Full (Fix Modal)</title>
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
     import {
@@ -58,7 +58,7 @@
     const txnForm = document.getElementById('transaction-form');
     const budgetInput = document.getElementById('budget-input');
     const budgetDisplay = document.getElementById('box-budget');
-    let fechaInput;
+    const addTxnBtn = document.getElementById('add-txn-btn');
 
     // Mostrar fecha
     document.getElementById('current-date').textContent = new Date().toLocaleDateString();
@@ -192,6 +192,8 @@
           }
         });
       });
+      // Mostrar modal correctamente
+      if(addTxnBtn) addTxnBtn.onclick = () => { txnModal.style.display = 'block'; };
     }
 
     // transacción manual con fecha seleccionable
@@ -256,13 +258,14 @@
     <button onclick="showView('main')">« Volver</button>
     <h2 id="box-title"></h2>
     <div id="box-actions"></div>
+    <div>Disponible</div>
     <div>Total: <strong id="box-total"></strong></div>
     <form id="budget-form">
       <label>Meta:<input id="budget-input" type="number"/></label>
       <button type="submit">Guardar Meta</button>
       <div>Meta actual: <strong id="box-budget"></strong></div>
     </form>
-    <button onclick="txnModal.style.display='block'">Agregar Transacción</button>
+    <button id="add-txn-btn" type="button">Agregar Transacción</button>
     <table>
       <thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Desc</th><th>Acción</th></tr></thead>
       <tbody id="txn-table-body"></tbody>
@@ -282,6 +285,7 @@
   </div>
 </body>
 </html>
+
 
 
 
